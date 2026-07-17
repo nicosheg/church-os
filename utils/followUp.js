@@ -1,5 +1,5 @@
 import { supabaseAdmin } from '../lib/supabaseClient';
-import { placeAiCall } from './twilio';
+import { initiateFollowUpCall } from './telephony/index.js';
 
 export async function processAbsentees(churchId, attendanceDate) {
   // 1. Get all absent records for that date (present=false) with active members

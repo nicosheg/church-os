@@ -9,8 +9,9 @@ export default async function handler(req, res) {
       .select('*')
       .eq('church_id', churchId)
       .order('created_at', { ascending: false });
+
     if (error) return res.status(500).json({ error: error.message });
-    return res.json(data);
+    return res.status(200).json(data);
   }
 
   if (req.method === 'POST') {
@@ -20,9 +21,10 @@ export default async function handler(req, res) {
       .insert({ first_name, last_name, phone, church_id, status: 'active' })
       .select()
       .single();
+
     if (error) return res.status(500).json({ error: error.message });
-    return res.json(data);
+    return res.status(200).json(data);
   }
 
   res.status(405).end();
-    }
+}

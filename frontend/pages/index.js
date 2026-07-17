@@ -1,37 +1,58 @@
-import { useState, useEffect } from 'react';
-import api from '../lib/api';
+import { useEffect, useState } from 'react';
 
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
-  const churchId = 'demo-church'; // replace with real auth
+  const churchId = 'demo-church';
 
   useEffect(() => {
-    api.get(`/api/dashboard/${churchId}`).then(res => setStats(res.data));
+    fetch(`/api/dashboard?church_id=${churchId}`)
+      .then(r => r.json())
+      .then(setStats);
   }, []);
 
-  if (!stats) return <div>Loading...</div>;
+  if (!stats) return <p>Loading...</p>;
+
+  const today = new Date().toLocaleDateString('en-US', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+  });
 
   return (
-    <div style={{ padding: 20 }}>
+    <div style={{ padding: 20, maxWidth: 800, margin: '0 auto' }}>
+      <nav style={{ display: 'flex', gap: 20, marginBottom: 30, borderBottom: '1px solid #eee', paddingBottom: 15 }}>
+        <a href="/" style={navStyle(true)}>📊 Dashboard</a>
+        <a href="/scan" style={navStyle()}>📷 Scan</a>
+        <a href="/members" style={navStyle()}>👥 Members</a>
+      </nav>
+
       <h1>Secretary Dashboard</h1>
-      <p>Date: {stats.attendance_date}</p>
-      <div style={{ display: 'flex', gap: 20 }}>
-        <StatCard label="Present" value={stats.present_count} />
-        <StatCard label="Absent" value={stats.absent_count} />
-        <StatCard label="Calls Completed" value={stats.calls_completed} />
-        <StatCard label="Prayer Requests" value={stats.prayer_requests} />
-        <StatCard label="Needs Pastor" value={stats.needs_pastor} />
-        <StatCard label="Wrong Numbers" value={stats.wrong_numbers} />
+      <p style={{ fontSize: 18, color: '#666' }}>{today}</p>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 15, marginTop: 20 }}>
+        <Card label="Present Today" value={stats.present_count} color="#4CAF50" />
+        <Card label="Absent" value={stats.absent_count} color="#f44336" />
+        <Card label="Calls Completed" value={stats.calls_completed} />
+        <Card label="Prayer Requests" value={stats.prayer_requests} color="#2196F3" />
+        <Card label="Needs Pastor" value={stats.needs_pastor} color="#ff9800" />
+        <Card label="Wrong Numbers" value={stats.wrong_numbers} color="#9e9e9e" />
       </div>
     </div>
   );
 }
 
-function StatCard({ label, value }) {
+function Card({ label, value, color = '#333' }) {
   return (
-    <div style={{ border: '1px solid #ccc', padding: 15, borderRadius: 8 }}>
-      <h3>{label}</h3>
-      <p style={{ fontSize: 24 }}>{value}</p>
+    <div style={{ border: '1px solid #ddd', padding: 20, borderRadius: 10, minWidth: 140, backgroundColor: '#fff' }}>
+      <h3 style={{ margin: 0, fontSize: 14, color: '#666' }}>{label}</h3>
+      <p style={{ fontSize: 32, fontWeight: 'bold', margin: '8px 0 0', color }}>{value}</p>
     </div>
   );
-    }
+}
+
+function navStyle(active = false) {
+  return {
+    textDecoration: 'none',
+    color: active ? '#4F46E5' : '#333',
+    fontWeight: active ? 'bold' : 'normal',
+    fontSize: 16,
+  };
+}

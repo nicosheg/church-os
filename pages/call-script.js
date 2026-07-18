@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
 const DEFAULT_TEMPLATE = {
-  greeting: "Hello {first_name}, this is Grace from your church.",
+  greeting: "Hello {first_name}, this is Nicholas from your church, Havilah Christian Church.",
   body: "We missed you today. Are you doing okay?",
   prayer: "Would you like us to pray with you?",
   closing: "Thank you. We look forward to seeing you soon. God bless.",

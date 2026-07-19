@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import Layout from '../components/Layout';
 
 export default function MembersPage() {
   const [members, setMembers] = useState([]);
@@ -15,15 +16,11 @@ export default function MembersPage() {
         if (Array.isArray(data)) {
           setMembers(data);
         } else {
-          setMessage('Could not load members. Unexpected data format.');
+          setMessage('Could not load members.');
           setMembers([]);
         }
       })
-      .catch(err => {
-        setMessage('Failed to connect. Please check your connection.');
-        console.error(err);
-        setMembers([]);
-      })
+      .catch(err => { setMessage('Failed to connect.'); console.error(err); setMembers([]); })
       .finally(() => setLoading(false));
   }, []);
 
@@ -32,7 +29,7 @@ export default function MembersPage() {
     const res = await fetch('/api/members', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...form, church_id: churchId }),
+      body: JSON.stringify({ ...form, church_id: churchId, type: 'member' }),
     });
     const data = await res.json();
     if (data && data.id) {
@@ -58,7 +55,7 @@ export default function MembersPage() {
           await fetch('/api/members', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ first_name, last_name: last_name || '', phone, church_id: churchId }),
+            body: JSON.stringify({ first_name, last_name: last_name || '', phone, church_id: churchId, type: 'member' }),
           });
         }
       }
@@ -83,125 +80,72 @@ export default function MembersPage() {
   if (loading) return <p>Loading members...</p>;
 
   return (
-    <div style={{ padding: 20, maxWidth: 800, margin: '0 auto' }}>
-      <nav style={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: 20,
-        marginBottom: 30,
-        borderBottom: '1px solid #eee',
-        paddingBottom: 15,
-      }}>
-        <Link href="/">📊 Dashboard</Link>
-        <Link href="/section">✅ Section Attendance</Link>
-        <Link href="/scan">📷 Scan</Link>
-        <Link href="/members" style={{ fontWeight: 'bold' }}>👥 Members</Link>
-        <Link href="/call-script">📝 Call Script</Link>
-      </nav>
+    <Layout>
+      <div style={{ padding: 20, maxWidth: 800, margin: '0 auto' }}>
+        <nav style={{ display: 'flex', flexWrap: 'wrap', gap: 20, marginBottom: 30, borderBottom: '1px solid #eee', paddingBottom: 15 }}>
+          <Link href="/">📊 Dashboard</Link>
+          <Link href="/session">📋 New Session</Link>
+          <Link href="/members" style={{ fontWeight: 'bold' }}>👥 Members</Link>
+          <Link href="/call-script">📝 Call Script</Link>
+        </nav>
 
-      <h1>👥 Member Management</h1>
+        <h1>👥 Member Management</h1>
 
-      <form onSubmit={addMember} style={{ marginBottom: 30 }}>
-        <h3>Add Member</h3>
-        <input
-          placeholder="First Name"
-          value={form.first_name}
-          onChange={e => setForm({ ...form, first_name: e.target.value })}
-          required
-          style={inputStyle}
-        />
-        <input
-          placeholder="Last Name"
-          value={form.last_name}
-          onChange={e => setForm({ ...form, last_name: e.target.value })}
-          style={inputStyle}
-        />
-        <input
-          placeholder="Phone (e.g. 08012345678)"
-          value={form.phone}
-          onChange={e => setForm({ ...form, phone: e.target.value })}
-          required
-          style={inputStyle}
-        />
-        <p style={{ fontSize: 12, color: '#888', margin: '0 0 10px 0' }}>
-          +234 added automatically if you start with 0
-        </p>
-        <button type="submit" style={buttonStyle}>➕ Add Member</button>
-      </form>
+        <form onSubmit={addMember} style={{ marginBottom: 30 }}>
+          <h3>Add Member</h3>
+          <input placeholder="First Name" value={form.first_name} onChange={e => setForm({ ...form, first_name: e.target.value })} required style={inputStyle} />
+          <input placeholder="Last Name" value={form.last_name} onChange={e => setForm({ ...form, last_name: e.target.value })} style={inputStyle} />
+          <input placeholder="Phone (e.g. 08012345678)" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} required style={inputStyle} />
+          <p style={{ fontSize: 12, color: '#888', margin: '0 0 10px 0' }}>+234 added automatically if you start with 0</p>
+          <button type="submit" style={buttonStyle}>➕ Add Member</button>
+        </form>
 
-      <div style={{ marginBottom: 30 }}>
-        <h3>Bulk Upload (CSV)</h3>
-        <p style={{ fontSize: 14, color: '#666' }}>
-          Format: FirstName,LastName,PhoneNumber (one per line).<br />
-          Phone numbers starting with 0 will automatically become +234.
-        </p>
-        <input type="file" accept=".csv,.txt" onChange={uploadBulk} />
-      </div>
+        <div style={{ marginBottom: 30 }}>
+          <h3>Bulk Upload (CSV)</h3>
+          <p style={{ fontSize: 14, color: '#666' }}>Format: FirstName,LastName,PhoneNumber (one per line). Phone numbers starting with 0 will automatically become +234.</p>
+          <input type="file" accept=".csv,.txt" onChange={uploadBulk} />
+        </div>
 
-      {message && <p style={{ background: '#e8f5e9', padding: 10, borderRadius: 8 }}>{message}</p>}
+        {message && <p style={{ background: '#e8f5e9', padding: 10, borderRadius: 8 }}>{message}</p>}
 
-      <h3>All Members ({members.length})</h3>
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 600 }}>
-          <thead>
-            <tr style={{ borderBottom: '2px solid #ddd' }}>
-              <th style={thStyle}>Name</th>
-              <th style={thStyle}>Phone</th>
-              <th style={thStyle}>Section</th>
-              <th style={thStyle}>Status</th>
-              <th style={thStyle}>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {members.map(m => (
-              <tr key={m.id} style={{ borderBottom: '1px solid #eee' }}>
-                <td style={tdStyle}>{m.first_name} {m.last_name}</td>
-                <td style={tdStyle}>{m.phone}</td>
-                <td style={tdStyle}>{m.section || '—'}</td>
-                <td style={tdStyle}>{m.status}</td>
-                <td style={tdStyle}>
-                  <button
-                    onClick={() => testCall(m.id)}
-                    style={{
-                      background: '#ff9800',
-                      border: 'none',
-                      color: 'white',
-                      padding: '6px 12px',
-                      borderRadius: 6,
-                      cursor: 'pointer',
-                      fontWeight: 'bold',
-                    }}
-                  >
-                    📞 Test Call
-                  </button>
-                </td>
+        <h3>All Members ({members.length})</h3>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 600 }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid #ddd' }}>
+                <th style={thStyle}>Name</th>
+                <th style={thStyle}>Phone</th>
+                <th style={thStyle}>Type</th>
+                <th style={thStyle}>Status</th>
+                <th style={thStyle}>Action</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {members.map(m => (
+                <tr key={m.id} style={{ borderBottom: '1px solid #eee' }}>
+                  <td style={tdStyle}>{m.first_name} {m.last_name}</td>
+                  <td style={tdStyle}>{m.phone}</td>
+                  <td style={tdStyle}>{m.type || 'member'}</td>
+                  <td style={tdStyle}>{m.status}</td>
+                  <td style={tdStyle}>
+                    <button
+                      onClick={() => testCall(m.id)}
+                      style={{ background: '#ff9800', border: 'none', color: 'white', padding: '6px 12px', borderRadius: 6, cursor: 'pointer', fontWeight: 'bold' }}
+                    >
+                      📞 Test Call
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
+    </Layout>
   );
 }
 
-const inputStyle = {
-  display: 'block',
-  width: '100%',
-  padding: 10,
-  margin: '8px 0',
-  borderRadius: 6,
-  border: '1px solid #ccc',
-};
-
-const buttonStyle = {
-  background: '#4F46E5',
-  color: 'white',
-  padding: '10px 20px',
-  border: 'none',
-  borderRadius: 6,
-  cursor: 'pointer',
-  marginTop: 10,
-};
-
+const inputStyle = { display: 'block', width: '100%', padding: 10, margin: '8px 0', borderRadius: 6, border: '1px solid #ccc' };
+const buttonStyle = { background: '#4F46E5', color: 'white', padding: '10px 20px', border: 'none', borderRadius: 6, cursor: 'pointer', marginTop: 10 };
 const thStyle = { padding: 10, textAlign: 'left', fontWeight: 'bold' };
 const tdStyle = { padding: 10 };

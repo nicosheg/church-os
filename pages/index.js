@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import Layout from '../components/Layout';
 
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
@@ -30,48 +31,43 @@ export default function Dashboard() {
   });
 
   return (
-    <div style={{ padding: 20, maxWidth: 800, margin: '0 auto' }}>
-      {/* Navigation */}
-      <nav style={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: 20,
-        marginBottom: 30,
-        borderBottom: '1px solid #eee',
-        paddingBottom: 15,
-      }}>
-        <a href="/" style={navLinkStyle(true)}>📊 Dashboard</a>
-        <a href="/section" style={navLinkStyle()}>✅ Section Attendance</a>
-        <a href="/scan" style={navLinkStyle()}>📷 Scan</a>
-        <a href="/members" style={navLinkStyle()}>👥 Members</a>
-        <a href="/call-script" style={navLinkStyle()}>📝 Call Script</a>
-      </nav>
+    <Layout>
+      <div style={{ padding: 20, maxWidth: 800, margin: '0 auto' }}>
+        {/* Navigation */}
+        <nav style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 20,
+          marginBottom: 30,
+          borderBottom: '1px solid #eee',
+          paddingBottom: 15,
+        }}>
+          <a href="/" style={navLinkStyle(true)}>📊 Dashboard</a>
+          <a href="/session" style={navLinkStyle()}>📋 New Session</a>
+          <a href="/members" style={navLinkStyle()}>👥 Members</a>
+          <a href="/call-script" style={navLinkStyle()}>📝 Call Script</a>
+        </nav>
 
-      <h1>Secretary Dashboard</h1>
-      <p style={{ fontSize: 18, color: '#666' }}>{today}</p>
+        <h1>Secretary Dashboard</h1>
+        <p style={{ fontSize: 18, color: '#666' }}>{today}</p>
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 15, marginTop: 20 }}>
-        <Card label="Present Today" value={stats.present_count} color="#4CAF50" />
-        <Card label="Absent" value={stats.absent_count} color="#f44336" />
-        <Card label="Calls Completed" value={stats.calls_completed} />
-        <Card label="Prayer Requests" value={stats.prayer_requests} color="#2196F3" />
-        <Card label="Needs Pastor" value={stats.needs_pastor} color="#ff9800" />
-        <Card label="Wrong Numbers" value={stats.wrong_numbers} color="#9e9e9e" />
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 15, marginTop: 20 }}>
+          <Card label="Present Today" value={stats.present_count} color="#4CAF50" />
+          <Card label="Absent" value={stats.absent_count} color="#f44336" />
+          <Card label="Calls Completed" value={stats.calls_completed} />
+          <Card label="Prayer Requests" value={stats.prayer_requests} color="#2196F3" />
+          <Card label="Needs Pastor" value={stats.needs_pastor} color="#ff9800" />
+          <Card label="Wrong Numbers" value={stats.wrong_numbers} color="#9e9e9e" />
+        </div>
+
+        {/* Quick Actions */}
+        <div style={{ marginTop: 40, display: 'flex', flexWrap: 'wrap', gap: 15 }}>
+          <a href="/session" style={actionButtonStyle}>📋 Create Attendance Session</a>
+          <a href="/call-script" style={actionButtonStyle}>📝 Edit Call Script</a>
+          <button onClick={startFollowUpCalls} style={actionButtonStyle}>📞 Start Follow‑up Calls</button>
+        </div>
       </div>
-
-      {/* Quick Actions */}
-      <div style={{ marginTop: 40, display: 'flex', flexWrap: 'wrap', gap: 15 }}>
-        <a href="/section" style={actionButtonStyle}>
-          ✅ Section Attendance
-        </a>
-        <a href="/call-script" style={actionButtonStyle}>
-          📝 Edit Call Script
-        </a>
-        <button onClick={startFollowUpCalls} style={actionButtonStyle}>
-          📞 Start Follow‑up Calls
-        </button>
-      </div>
-    </div>
+    </Layout>
   );
 }
 

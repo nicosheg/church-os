@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
+import Layout from '../components/Layout';
 
 const CHURCH_ID = 'demo-church';
 
@@ -50,48 +51,50 @@ export default function SessionPage() {
   };
 
   return (
-    <div style={{ padding: 20, maxWidth: 650, margin: '0 auto' }}>
-      <h1>Create Attendance Session</h1>
+    <Layout>
+      <div style={{ padding: 20, maxWidth: 650, margin: '0 auto' }}>
+        <h1>Create Attendance Session</h1>
 
-      <div style={{ marginBottom: 20 }}>
-        <label>Session Name</label>
-        <input value={sessionName} onChange={e => setSessionName(e.target.value)} style={inputStyle} />
+        <div style={{ marginBottom: 20 }}>
+          <label>Session Name</label>
+          <input value={sessionName} onChange={e => setSessionName(e.target.value)} style={inputStyle} />
+        </div>
+
+        <div style={{ marginBottom: 20 }}>
+          <label>Sections (Usher Assignments)</label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '8px 0' }}>
+            {sections.map(s => (<span key={s} style={tagStyle}>{s}</span>))}
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input value={newSection} onChange={e => setNewSection(e.target.value)} placeholder="New section" style={inputStyle} />
+            <button onClick={addSection} style={smallBtn}>Add</button>
+          </div>
+        </div>
+
+        <h2>WhatsApp Message Templates</h2>
+        <p style={{ fontSize: 14, color: '#555' }}>Ushers can personalize these messages before sending.</p>
+
+        {Object.entries(templates).map(([category, body]) => (
+          <div key={category} style={{ marginBottom: 15, border: '1px solid #ddd', borderRadius: 8, padding: 12 }}>
+            <strong>{category.replace(/_/g, ' ')}</strong>
+            {editCategory === category ? (
+              <div>
+                <textarea value={editBody} onChange={e => setEditBody(e.target.value)} rows={4} style={{ width: '100%', marginTop: 8 }} />
+                <button onClick={() => saveTemplate(category)} style={smallBtn}>Save</button>
+                <button onClick={() => setEditCategory(null)} style={{ ...smallBtn, background: '#ccc' }}>Cancel</button>
+              </div>
+            ) : (
+              <div>
+                <p style={{ whiteSpace: 'pre-wrap', margin: '8px 0' }}>{body}</p>
+                <button onClick={() => { setEditCategory(category); setEditBody(body); }} style={smallBtn}>Edit</button>
+              </div>
+            )}
+          </div>
+        ))}
+
+        <button onClick={startSession} style={bigBtn}>Start Session →</button>
       </div>
-
-      <div style={{ marginBottom: 20 }}>
-        <label>Sections (Usher Assignments)</label>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '8px 0' }}>
-          {sections.map(s => (<span key={s} style={tagStyle}>{s}</span>))}
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input value={newSection} onChange={e => setNewSection(e.target.value)} placeholder="New section" style={inputStyle} />
-          <button onClick={addSection} style={smallBtn}>Add</button>
-        </div>
-      </div>
-
-      <h2>WhatsApp Message Templates</h2>
-      <p style={{ fontSize: 14, color: '#555' }}>Ushers can personalize these messages before sending.</p>
-
-      {Object.entries(templates).map(([category, body]) => (
-        <div key={category} style={{ marginBottom: 15, border: '1px solid #ddd', borderRadius: 8, padding: 12 }}>
-          <strong>{category.replace(/_/g, ' ')}</strong>
-          {editCategory === category ? (
-            <div>
-              <textarea value={editBody} onChange={e => setEditBody(e.target.value)} rows={4} style={{ width: '100%', marginTop: 8 }} />
-              <button onClick={() => saveTemplate(category)} style={smallBtn}>Save</button>
-              <button onClick={() => setEditCategory(null)} style={{ ...smallBtn, background: '#ccc' }}>Cancel</button>
-            </div>
-          ) : (
-            <div>
-              <p style={{ whiteSpace: 'pre-wrap', margin: '8px 0' }}>{body}</p>
-              <button onClick={() => { setEditCategory(category); setEditBody(body); }} style={smallBtn}>Edit</button>
-            </div>
-          )}
-        </div>
-      ))}
-
-      <button onClick={startSession} style={bigBtn}>Start Session →</button>
-    </div>
+    </Layout>
   );
 }
 

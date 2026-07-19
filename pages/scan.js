@@ -18,7 +18,7 @@ export default function ScanPage() {
     form.append('file', file);
     form.append('church_id', 'demo-church');
     form.append('uploaded_by', 'secretary');
-    form.append('program_name', programName.trim() || 'GIBEON 2026');
+    form.append('program_name', programName.trim() || 'GIBEON');
 
     try {
       const res = await fetch('/api/attendance/scan', { method: 'POST', body: form });
@@ -41,35 +41,46 @@ export default function ScanPage() {
 
   return (
     <Layout>
-      <div style={{ padding: 20, maxWidth: 600, margin: '0 auto', textAlign: 'center' }}>
-        <h1>Scan Attendance</h1>
-        <p style={{ fontSize: 18, color: '#666' }}>{today}</p>
+      <div style={{ maxWidth: 500, margin: '40px auto', padding: '0 20px', textAlign: 'center' }}>
+        <h1 style={{ fontSize: 28, fontWeight: 700 }}>Scan Attendance</h1>
+        <p style={{ color: '#555', marginBottom: 25 }}>{today}</p>
 
-        {/* Program Name Input */}
-        <div style={{ marginBottom: 20 }}>
-          <label style={{ fontWeight: 'bold', display: 'block', marginBottom: 6 }}>Program / Event Name</label>
+        <div style={{ marginBottom: 25 }}>
+          <label style={{ fontWeight: 600, display: 'block', marginBottom: 8 }}>Program / Event Name</label>
           <input
             type="text"
             value={programName}
             onChange={e => setProgramName(e.target.value)}
             placeholder="e.g., GIBEON"
             style={{
-              padding: '10px 14px',
+              padding: '12px 16px',
               fontSize: 16,
-              borderRadius: 8,
-              border: '1px solid #ccc',
+              borderRadius: 12,
+              border: '1px solid #ddd',
               width: '100%',
-              maxWidth: 300,
+              maxWidth: 280,
               textAlign: 'center',
+              backdropFilter: 'blur(5px)',
+              background: 'rgba(255,255,255,0.7)',
+              outline: 'none',
             }}
           />
         </div>
 
-        <label htmlFor="cameraInput" style={{ cursor: 'pointer', marginTop: 30, display: 'inline-block' }}>
+        <label htmlFor="cameraInput" style={{ cursor: 'pointer', display: 'inline-block' }}>
           <div style={{
-            background: loading ? '#999' : '#4F46E5',
-            color: 'white', padding: '20px 40px', borderRadius: 16, fontSize: 20,
-          }}>
+            background: loading ? '#999' : 'linear-gradient(135deg, #4F46E5, #7C3AED)',
+            color: 'white',
+            padding: '18px 40px',
+            borderRadius: 16,
+            fontSize: 20,
+            fontWeight: 600,
+            boxShadow: '0 8px 24px rgba(79,70,229,0.3)',
+            transition: 'transform 0.2s',
+          }}
+            onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.02)'}
+            onMouseLeave={e => e.currentTarget.style.transform = 'none'}
+          >
             📷 {loading ? 'Processing...' : 'Take Photo of Register'}
           </div>
         </label>
@@ -81,7 +92,11 @@ export default function ScanPage() {
           onChange={handleFile}
           style={{ display: 'none' }}
         />
-        {message && <p style={{ marginTop: 20, fontSize: 18 }}>{message}</p>}
+        {message && (
+          <div style={{ marginTop: 20, padding: 12, background: 'rgba(255,255,255,0.8)', borderRadius: 12, backdropFilter: 'blur(5px)' }}>
+            {message}
+          </div>
+        )}
       </div>
     </Layout>
   );

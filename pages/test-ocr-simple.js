@@ -8,16 +8,12 @@ export default function SimpleOCRTest() {
   const handleFile = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
     setStatus('processing');
     setText('');
 
     try {
-      const worker = await Tesseract.createWorker('eng');
-      // Use the File object directly – Tesseract.js can handle it
-      const { data: { text: recognizedText } } = await worker.recognize(file);
-      await worker.terminate();
-
+      // Legacy API
+      const { data: { text: recognizedText } } = await Tesseract.recognize(file, 'eng');
       setText(recognizedText || '(no text found)');
       setStatus('success');
     } catch (err) {
@@ -28,13 +24,9 @@ export default function SimpleOCRTest() {
 
   return (
     <div style={{ padding: 20, maxWidth: 600, margin: '0 auto' }}>
-      <h1>Minimal OCR Test</h1>
-      <p>Select an image with handwritten names to test Tesseract.js directly.</p>
-
+      <h1>Minimal OCR Test (Legacy API)</h1>
       <input type="file" accept="image/*" capture="environment" onChange={handleFile} />
-
       {status === 'processing' && <p>⏳ Running OCR...</p>}
-
       {text && (
         <div style={{ marginTop: 20, whiteSpace: 'pre-wrap', background: '#f0f0f0', padding: 12, borderRadius: 8 }}>
           <h3>Extracted Text:</h3>
@@ -43,4 +35,4 @@ export default function SimpleOCRTest() {
       )}
     </div>
   );
-}
+  }

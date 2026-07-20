@@ -7,20 +7,20 @@ export default function ScanPage() {
   const router = useRouter();
   const fileInputRef = useRef(null);
   const [scanState, setScanStateLocal] = useState(getScanState());
+  const [programName, setProgramName] = useState('GIBEON');   // ✅ editable
 
-  // Sync global state to local on mount
+  // Restore any existing scan state when the page mounts
   useEffect(() => {
     const state = getScanState();
     setScanStateLocal(state);
   }, []);
 
-  // Update local and global state together
   const updateState = (newState) => {
     setScanState(newState);
     setScanStateLocal(prev => ({ ...prev, ...newState }));
   };
 
-  // Resize image helper (same as above)
+  // Resize image client‑side to avoid memory errors
   const resizeImage = (file) => {
     return new Promise((resolve) => {
       const img = new Image();
@@ -75,6 +75,7 @@ export default function ScanPage() {
 
       const res = await fetch('/api/attendance/scan', { method: 'POST', body: form });
       const data = await res.json();
+
       if (data.status === 'ok') {
         updateState({
           status: 'success',
@@ -92,7 +93,6 @@ export default function ScanPage() {
     }
   };
 
-  const programName = 'GIBEON';   // you can make this state if needed, but it's fine static for now
   const today = new Date().toLocaleDateString('en-US', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
   });
@@ -106,27 +106,42 @@ export default function ScanPage() {
         {scanState.status === 'idle' && (
           <>
             <div style={{ marginBottom: 25 }}>
-              <label style={{ fontWeight: 600, display: 'block', marginBottom: 8 }}>Program / Event Name</label>
+              <label style={{ fontWeight: 600, display: 'block', marginBottom: 8 }}>
+                Program / Event Name
+              </label>
               <input
                 type="text"
                 value={programName}
-                readOnly   // or make it editable
+                onChange={e => setProgramName(e.target.value)}
+                placeholder="e.g., GIBEON"
                 style={{
-                  padding: '12px 16px', fontSize: 16, borderRadius: 12,
-                  border: '1px solid #ddd', width: '100%', maxWidth: 280,
-                  textAlign: 'center', backdropFilter: 'blur(5px)',
-                  background: 'rgba(255,255,255,0.7)', outline: 'none',
+                  padding: '12px 16px',
+                  fontSize: 16,
+                  borderRadius: 12,
+                  border: '1px solid #ddd',
+                  width: '100%',
+                  maxWidth: 280,
+                  textAlign: 'center',
+                  backdropFilter: 'blur(5px)',
+                  background: 'rgba(255,255,255,0.7)',
+                  outline: 'none',
                 }}
               />
             </div>
 
             <label htmlFor="cameraInput" style={{ cursor: 'pointer', display: 'inline-block' }}>
-              <div style={{
-                background: 'linear-gradient(135deg, #4F46E5, #7C3AED)',
-                color: 'white', padding: '18px 40px', borderRadius: 16, fontSize: 20,
-                fontWeight: 600, boxShadow: '0 8px 24px rgba(79,70,229,0.3)',
-                transition: 'transform 0.2s',
-              }}>
+              <div
+                style={{
+                  background: 'linear-gradient(135deg, #4F46E5, #7C3AED)',
+                  color: 'white',
+                  padding: '18px 40px',
+                  borderRadius: 16,
+                  fontSize: 20,
+                  fontWeight: 600,
+                  boxShadow: '0 8px 24px rgba(79,70,229,0.3)',
+                  transition: 'transform 0.2s',
+                }}
+              >
                 📷 Take Photo of Register
               </div>
             </label>
@@ -143,7 +158,15 @@ export default function ScanPage() {
         )}
 
         {scanState.status !== 'idle' && (
-          <div style={{ marginTop: 30, padding: 12, background: 'rgba(255,255,255,0.8)', borderRadius: 12, backdropFilter: 'blur(5px)' }}>
+          <div
+            style={{
+              marginTop: 30,
+              padding: 12,
+              background: 'rgba(255,255,255,0.8)',
+              borderRadius: 12,
+              backdropFilter: 'blur(5px)',
+            }}
+          >
             {scanState.status === 'processing' && (
               <p style={{ fontSize: 18 }}>⏳ {scanState.message}</p>
             )}
@@ -155,4 +178,4 @@ export default function ScanPage() {
       </div>
     </Layout>
   );
-                                }
+                 }

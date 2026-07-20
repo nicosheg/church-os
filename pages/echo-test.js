@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 export default function EchoTest() {
-  const [result, setResult] = useState('Testing...');
+  const [result, setResult] = useState('Sending...');
 
   useEffect(() => {
     const form = new FormData();
@@ -14,9 +14,9 @@ export default function EchoTest() {
   }, []);
 
   return (
-    <div style={{ padding: 20, textAlign: 'center', marginTop: 50 }}>
-      <h1>Echo Test Result</h1>
+    <div style={{ padding: 20, textAlign: 'center', marginTop: 60 }}>
+      <h1>Echo Test</h1>
       <p style={{ fontSize: 18 }}>{result}</p>
     </div>
   );
-            }
+}

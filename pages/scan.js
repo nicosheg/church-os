@@ -2,14 +2,14 @@ import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
 import { getScanState, setScanState, clearScanState } from '../lib/scanStore';
+import Tesseract from 'tesseract.js';
 
 export default function ScanPage() {
   const router = useRouter();
   const fileInputRef = useRef(null);
   const [scanState, setScanStateLocal] = useState(getScanState());
-  const [programName, setProgramName] = useState('GIBEON');   // ✅ editable
+  const [programName, setProgramName] = useState('GIBEON');
 
-  // Restore any existing scan state when the page mounts
   useEffect(() => {
     const state = getScanState();
     setScanStateLocal(state);
@@ -20,40 +20,21 @@ export default function ScanPage() {
     setScanStateLocal(prev => ({ ...prev, ...newState }));
   };
 
-  // Resize image client‑side to avoid memory errors
-  const resizeImage = (file) => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.src = URL.createObjectURL(file);
-      img.onload = () => {
-        const MAX_WIDTH = 1200;
-        const MAX_HEIGHT = 1200;
-        let width = img.width;
-        let height = img.height;
+  // Perform OCR directly in the browser
+  const extractNamesFromFile = async (file) => {
+    const worker = await Tesseract.createWorker('eng');
+    await worker.setParameters({
+      tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+ ',
+      preserve_interword_spaces: '1',
+    });
+    const { data: { text } } = await worker.recognize(file);
+    await worker.terminate();
 
-        if (width > MAX_WIDTH) {
-          height = (height * MAX_WIDTH) / width;
-          width = MAX_WIDTH;
-        }
-        if (height > MAX_HEIGHT) {
-          width = (width * MAX_HEIGHT) / height;
-          height = MAX_HEIGHT;
-        }
-
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
-
-        canvas.toBlob((blob) => {
-          const resizedFile = new File([blob], file.name, {
-            type: 'image/jpeg',
-            lastModified: Date.now(),
-          });
-          resolve(resizedFile);
-        }, 'image/jpeg', 0.8);
-      };
+    const lines = text.split('\n').map(line => line.trim()).filter(Boolean);
+    return lines.map(line => {
+      const parts = line.split(/\s+/);
+      if (parts.length === 1) return { first_name: parts[0], last_name: '' };
+      return { first_name: parts[0], last_name: parts.slice(1).join(' ') };
     });
   };
 
@@ -61,19 +42,29 @@ export default function ScanPage() {
     const file = e.target.files[0];
     if (!file) return;
 
-    updateState({ status: 'processing', message: 'Resizing image...' });
+    updateState({ status: 'processing', message: 'Reading names...' });
 
     try {
-      const resized = await resizeImage(file);
-      updateState({ message: 'Uploading...' });
+      // 1. OCR in the browser
+      const extractedNames = await extractNamesFromFile(file);
+      if (extractedNames.length === 0) {
+        updateState({ status: 'error', message: '❌ No names detected. Please try again with a clearer photo.' });
+        return;
+      }
 
-      const form = new FormData();
-      form.append('file', resized);
-      form.append('church_id', 'demo-church');
-      form.append('uploaded_by', 'secretary');
-      form.append('program_name', programName.trim() || 'GIBEON');
+      updateState({ message: `Found ${extractedNames.length} names. Saving...` });
 
-      const res = await fetch('/api/attendance/scan', { method: 'POST', body: form });
+      // 2. Send extracted names to backend
+      const res = await fetch('/api/attendance/process-names', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          church_id: 'demo-church',
+          program_name: programName.trim() || 'GIBEON',
+          names: extractedNames,
+        }),
+      });
+
       const data = await res.json();
 
       if (data.status === 'ok') {
@@ -178,4 +169,4 @@ export default function ScanPage() {
       </div>
     </Layout>
   );
-                 }
+    }

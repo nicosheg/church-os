@@ -9,7 +9,7 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'No image data received' });
   }
 
-  // Clean the base64 string (remove any data URL prefix and whitespace)
+  // Clean the base64 string
   let base64 = image_base64.replace(/^data:image\/\w+;base64,/, '').replace(/\s/g, '');
   if (base64.length < 100) {
     return res.status(400).json({ error: 'Image too small or corrupted. Please retake the photo.' });
@@ -19,7 +19,7 @@ export default async function handler(req, res) {
   const programName = program_name || 'GIBEON';
 
   try {
-    // Call OCR.space using form-encoded body (matching Python implementation)
+    // ── 1. OCR via OCR.space (form‑encoded) ──
     const params = new URLSearchParams();
     params.append('base64Image', `data:image/jpeg;base64,${base64}`);
     params.append('apikey', 'helloworld');
@@ -45,38 +45,98 @@ export default async function handler(req, res) {
 
     const rawText = ocrData.ParsedResults[0].ParsedText;
 
-    // Parse names from the OCR text
+    // ── 2. Smart name & phone extraction ──
     const lines = rawText.split('\n').map(line => line.trim()).filter(Boolean);
-    const extractedNames = lines.map(line => {
-      const parts = line.split(/\s+/);
-      if (parts.length === 1) return { first_name: parts[0], last_name: '' };
-      return { first_name: parts[0], last_name: parts.slice(1).join(' ') };
+    const extractedNames = [];
+    let pendingPhone = null;
+
+    const isPhoneLike = (str) => {
+      const digits = str.replace(/\D/g, '');
+      return digits.length >= 8;
+    };
+
+    const isHeader = (str) =>
+      /^(name|phone|telephone|attendance|date|program|service|total)$/i.test(str);
+
+    lines.forEach(line => {
+      if (isHeader(line)) return;
+
+      // If line is primarily a phone number, store it for next name
+      if (isPhoneLike(line) && !/[a-zA-Z]{2,}/.test(line)) {
+        pendingPhone = line.replace(/[\s\-\/\\|]/g, '');
+        return;
+      }
+
+      // Check for a phone number at the end of the line
+      const phoneMatch = line.match(/(.*?)([0-9+\-\s]{8,})$/);
+      let namePart = line;
+      let phonePart = null;
+
+      if (phoneMatch) {
+        namePart = phoneMatch[1].trim();
+        phonePart = phoneMatch[2].replace(/[\s\-\/\\|]/g, '');
+      }
+
+      // Keep only if namePart has at least 2 letters (likely a real name)
+      if (namePart.length >= 2 && /[a-zA-Z]{2,}/.test(namePart)) {
+        const parts = namePart.split(/\s+/);
+        extractedNames.push({
+          first_name: parts[0],
+          last_name: parts.slice(1).join(' '),
+          phone: phonePart || pendingPhone || '',
+        });
+        pendingPhone = null;
+      }
     });
 
-    if (extractedNames.length === 0) {
+    // If a phone was left at the end, attach it to the last name
+    if (pendingPhone && extractedNames.length > 0) {
+      extractedNames[extractedNames.length - 1].phone = pendingPhone;
+    }
+
+    // ── 3. Normalize phone numbers & remove duplicates ──
+    const uniqueNames = [];
+    const seen = new Set();
+
+    for (const nameObj of extractedNames) {
+      // Normalize phone
+      let phone = (nameObj.phone || '').replace(/[\s\-\/\\|]/g, '');
+      if (phone.startsWith('0')) phone = '+234' + phone.substring(1);
+      if (phone.startsWith('234') && !phone.startsWith('+')) phone = '+' + phone;
+
+      const key = `${nameObj.first_name}|${nameObj.last_name}|${phone}`;
+      if (!seen.has(key)) {
+        uniqueNames.push({ ...nameObj, phone });
+        seen.add(key);
+      }
+    }
+
+    if (uniqueNames.length === 0) {
       return res.status(400).json({ error: 'No names detected. Please try a clearer photo.' });
     }
 
-    // Database operations (unchanged – using direct pool)
+    // ── 4. Database operations ──
     const client = await pool.connect();
+
     const membersRes = await client.query(
       `SELECT id, first_name, last_name FROM members WHERE church_id = $1 AND status = 'active'`,
       [churchId]
     );
     const membersList = membersRes.rows;
 
-    const { presentIds, unmatched } = matchNamesToMembers(extractedNames, membersList);
+    const { presentIds, unmatched } = matchNamesToMembers(uniqueNames, membersList);
     let newMembersCount = 0;
 
-    for (const fullName of unmatched) {
-      const parts = fullName.split(' ');
-      const firstName = parts[0];
-      const lastName = parts.slice(1).join(' ');
+    for (const nameObj of unmatched) {
+      const firstName = nameObj.first_name;
+      const lastName = nameObj.last_name;
+      const phone = nameObj.phone || '';
+
       const insertRes = await client.query(
         `INSERT INTO members (church_id, first_name, last_name, phone, status, type)
-         VALUES ($1, $2, $3, '', 'active', 'visitor')
+         VALUES ($1, $2, $3, $4, 'active', 'visitor')
          RETURNING id`,
-        [churchId, firstName, lastName]
+        [churchId, firstName, lastName, phone]
       );
       presentIds.push(insertRes.rows[0].id);
       newMembersCount++;
@@ -141,4 +201,4 @@ export default async function handler(req, res) {
     console.error('OCR.space scan error:', error);
     return res.status(500).json({ error: error.message || 'Internal server error' });
   }
-  }
+}

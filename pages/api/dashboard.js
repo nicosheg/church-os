@@ -1,49 +1,52 @@
-import { supabaseAdmin } from '../../lib/supabaseClient';
+import pool from '../../lib/db';
 
 export default async function handler(req, res) {
   const churchId = req.query.church_id || 'demo-church';
-  const today = new Date().toISOString().slice(0,10);
+  const today = new Date().toISOString().slice(0, 10);
 
-  const { data, error } = await supabaseAdmin
-    .rpc('get_dashboard_stats', { _church_id: churchId, _today: today });
-    // We'll create a database function or just run raw SQL
-  if (error) return res.status(500).json({ error: error.message });
+  try {
+    // Get all attendance records for today with member's church_id filter
+    const attendanceResult = await pool.query(
+      `SELECT ar.member_id, ar.present,
+              m.id AS member_id, m.church_id
+       FROM attendance_records ar
+       JOIN members m ON ar.member_id = m.id
+       WHERE m.church_id = $1 AND ar.attendance_date = $2`,
+      [churchId, today]
+    );
 
-  // Fallback: raw query if RPC not defined
-  const { data: result } = await supabaseAdmin
-    .from('attendance_records')
-    .select(`
-      attendance_date,
-      member_id,
-      present,
-      members!inner ( church_id ),
-      follow_up_logs ( id, intent_detected, priority, call_status )
-    `, { count: 'exact' })
-    .eq('members.church_id', churchId)
-    .eq('attendance_date', today);
+    // Get follow-up logs for today (using called_at date)
+    const logsResult = await pool.query(
+      `SELECT fl.member_id, fl.call_status, fl.intent_detected, fl.priority
+       FROM follow_up_logs fl
+       JOIN members m ON fl.member_id = m.id
+       WHERE m.church_id = $1 AND fl.called_at::date = $2`,
+      [churchId, today]
+    );
 
-  // Manual calculation for MVP
-  let presentCount = 0, absentCount = 0, callsCompleted = 0, prayerRequests = 0, needsPastor = 0, wrongNumbers = 0;
-  const seenMembers = new Set();
-  (result || []).forEach(rec => {
-    if (seenMembers.has(rec.member_id)) return;
-    seenMembers.add(rec.member_id);
-    if (rec.present) presentCount++; else absentCount++;
-    (rec.follow_up_logs || []).forEach(log => {
-      if (log.call_status === 'completed') callsCompleted++;
-      if (log.intent_detected === 'prayer_request') prayerRequests++;
-      if (log.priority === 'high') needsPastor++;
-      if (log.call_status === 'failed') wrongNumbers++;
+    // Aggregate present/absent counts
+    const attendanceRows = attendanceResult.rows;
+    const presentCount = attendanceRows.filter(r => r.present).length;
+    const absentCount = attendanceRows.filter(r => !r.present).length;
+
+    // Aggregate follow-up stats
+    const logs = logsResult.rows;
+    const callsCompleted = logs.filter(l => l.call_status === 'completed').length;
+    const prayerRequests = logs.filter(l => l.intent_detected === 'prayer_request').length;
+    const needsPastor = logs.filter(l => l.priority === 'high').length;
+    const wrongNumbers = logs.filter(l => l.call_status === 'failed').length;
+
+    res.status(200).json({
+      attendance_date: today,
+      present_count: presentCount,
+      absent_count: absentCount,
+      calls_completed: callsCompleted,
+      prayer_requests: prayerRequests,
+      needs_pastor: needsPastor,
+      wrong_numbers: wrongNumbers,
     });
-  });
-
-  res.json({
-    attendance_date: today,
-    present_count: presentCount,
-    absent_count: absentCount,
-    calls_completed: callsCompleted,
-    prayer_requests: prayerRequests,
-    needs_pastor: needsPastor,
-    wrong_numbers: wrongNumbers,
-  });
-          }
+  } catch (error) {
+    console.error('Dashboard error:', error);
+    res.status(500).json({ error: error.message });
+  }
+}

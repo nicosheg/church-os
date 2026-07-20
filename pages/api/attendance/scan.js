@@ -1,8 +1,8 @@
+import { IncomingForm } from 'formidable';   // ✅ correct for v3
 import { supabaseAdmin } from '../../../lib/supabaseClient';
 import { extractNamesFromImage } from '../../../utils/ocr';
 import { matchNamesToMembers } from '../../../lib/fuzzyMatch';
 import pool from '../../../lib/db';
-import formidable from 'formidable';
 import fs from 'fs';
 
 export const config = {
@@ -13,7 +13,7 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
 
   try {
-    const form = new formidable.IncomingForm();
+    const form = new IncomingForm();   // ✅
     form.parse(req, async (err, fields, files) => {
       if (err) {
         console.error('Form parse error:', err);
@@ -23,10 +23,10 @@ export default async function handler(req, res) {
       try {
         const churchId = fields.church_id?.[0] || 'demo-church';
         const programName = fields.program_name?.[0] || 'GIBEON';
-        const file = files.file?.[0];   // formidable v3 array
+        const file = files.file?.[0];   // formidable v3 stores files in arrays
         if (!file) return res.status(400).json({ error: 'No file uploaded' });
 
-        console.log('Uploading file to Supabase...');
+        // Upload to Supabase Storage
         const fileBuffer = fs.readFileSync(file.filepath);
         const fileExt = file.originalFilename.split('.').pop();
         const filePath = `${churchId}/${Date.now()}.${fileExt}`;
@@ -45,11 +45,10 @@ export default async function handler(req, res) {
           .getPublicUrl(filePath);
         const publicUrl = urlData.publicUrl;
 
-        console.log('Extracting names with OCR...');
+        // OCR
         const extractedNames = await extractNamesFromImage(publicUrl);
-        console.log('Names found:', extractedNames.length);
 
-        // Get existing active members
+        // Database operations
         const client = await pool.connect();
         const membersRes = await client.query(
           `SELECT id, first_name, last_name FROM members WHERE church_id = $1 AND status = 'active'`,
@@ -57,11 +56,9 @@ export default async function handler(req, res) {
         );
         const membersList = membersRes.rows;
 
-        // Match names
         const { presentIds, unmatched } = matchNamesToMembers(extractedNames, membersList);
         let newMembersCount = 0;
 
-        // Add unmatched as new members
         for (const fullName of unmatched) {
           const parts = fullName.split(' ');
           const firstName = parts[0];
@@ -77,7 +74,6 @@ export default async function handler(req, res) {
           newMembersCount++;
         }
 
-        // Session handling
         const today = new Date().toISOString().slice(0, 10);
         let sessionRes = await client.query(
           `SELECT id FROM sessions WHERE church_id = $1 AND name = $2 AND created_at::date = $3`,
@@ -104,7 +100,6 @@ export default async function handler(req, res) {
         );
         const sectionId = sectionRes.rows[0].id;
 
-        // Mark present
         for (const memberId of presentIds) {
           await client.query(
             `INSERT INTO attendance_records (member_id, attendance_date, present, session_section_id)
@@ -112,9 +107,8 @@ export default async function handler(req, res) {
              ON CONFLICT (member_id, attendance_date) DO UPDATE SET present = true`,
             [memberId, today, sectionId]
           );
-        }p00
+        }
 
-        // Mark others absent
         const allActiveIds = membersList.map(m => m.id);
         for (const id of allActiveIds) {
           if (!presentIds.includes(id)) {
@@ -129,7 +123,6 @@ export default async function handler(req, res) {
 
         client.release();
 
-        console.log('Scan complete');
         return res.status(200).json({
           status: 'ok',
           present_count: presentIds.length,
@@ -145,4 +138,4 @@ export default async function handler(req, res) {
     console.error('SCAN OUTER ERROR:', outerError);
     res.status(500).json({ error: outerError.message });
   }
-          }0
+    }

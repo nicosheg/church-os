@@ -9,7 +9,7 @@ export default function ScanPage() {
   const [scanState, setScanStateLocal] = useState(getScanState());
   const [programName, setProgramName] = useState('GIBEON');
 
-  // Restore any existing scan state (survives page navigation)
+  // Restore persistent scan state
   useEffect(() => {
     const state = getScanState();
     setScanStateLocal(state);
@@ -20,7 +20,7 @@ export default function ScanPage() {
     setScanStateLocal(prev => ({ ...prev, ...newState }));
   };
 
-  // Resize the image and return its base64 representation
+  // Resize and convert to base64
   const fileToBase64 = (file) => {
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -47,7 +47,7 @@ export default function ScanPage() {
         ctx.drawImage(img, 0, 0, width, height);
 
         const base64 = canvas.toDataURL('image/jpeg', 0.6);
-        resolve(base64.split(',')[1]); // only the base64 data
+        resolve(base64.split(',')[1]); // only the base64 data part
       };
       img.onerror = reject;
     });
@@ -85,10 +85,18 @@ export default function ScanPage() {
           router.push('/');
         }, 3000);
       } else {
-        updateState({ status: 'error', message: '❌ Error: ' + (data.error || 'Unknown') });
+        // Show the specific error from the server, or fallback
+        updateState({
+          status: 'error',
+          message: '❌ Error: ' + (data.error || data.message || 'Unknown server error'),
+        });
       }
     } catch (err) {
-      updateState({ status: 'error', message: '❌ Network error: ' + err.message });
+      // Network or fetch error
+      updateState({
+        status: 'error',
+        message: '❌ Network error: ' + (err.message || 'Could not reach server'),
+      });
     }
   };
 
@@ -177,4 +185,4 @@ export default function ScanPage() {
       </div>
     </Layout>
   );
-  }
+      }

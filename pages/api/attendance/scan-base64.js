@@ -10,20 +10,20 @@ export default async function handler(req, res) {
   const { church_id, program_name, image_base64 } = req.body;
 
   if (!image_base64) {
-    return res.status(400).json({ error: 'No image data' });
+    return res.status(400).json({ error: 'No image data received' });
   }
 
   const churchId = church_id || 'demo-church';
   const programName = program_name || 'GIBEON';
 
   try {
-    // Write base64 image to a temporary file
+    // Write base64 to temp file
     const tmpDir = '/tmp';
     const tmpFile = path.join(tmpDir, `scan-${Date.now()}.jpg`);
     const buffer = Buffer.from(image_base64, 'base64');
     fs.writeFileSync(tmpFile, buffer);
 
-    // Run OCR
+    // OCR
     const worker = await Tesseract.createWorker('eng');
     await worker.setParameters({
       tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+ ',
@@ -32,10 +32,10 @@ export default async function handler(req, res) {
     const { data: { text } } = await worker.recognize(tmpFile);
     await worker.terminate();
 
-    // Clean up temp file
+    // Clean up
     fs.unlinkSync(tmpFile);
 
-    // Parse names from OCR text
+    // Parse names
     const lines = text.split('\n').map(line => line.trim()).filter(Boolean);
     const extractedNames = lines.map(line => {
       const parts = line.split(/\s+/);
@@ -44,13 +44,13 @@ export default async function handler(req, res) {
     });
 
     if (extractedNames.length === 0) {
-      return res.status(400).json({ error: 'No names detected. Please ensure the photo is clear and contains handwritten names.' });
+      return res.status(400).json({ error: 'No names detected. Please ensure the photo is clear.' });
     }
 
-    // Database operations (direct pool)
+    // Database (direct pool, no storage)
     const client = await pool.connect();
     const membersRes = await client.query(
-      `SELECT id, first_name, last_name FROM members WHERE church_id = $1 AND status = 'active'`,
+      `SELECT id, first_name, last_name FROM members WHERE church_id = $1 AND status = 'active' AND (deleted_at IS NULL OR deleted_at > NOW() - INTERVAL '30 days')`,
       [churchId]
     );
     const membersList = membersRes.rows;
@@ -129,6 +129,6 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     console.error('Scan base64 error:', error);
-    return res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: error.message || 'Internal server error' });
   }
-  }
+}

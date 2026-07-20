@@ -9,13 +9,8 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'No image data received' });
   }
 
-  // Strip data URL prefix if present (shouldn't be, but just in case)
-  let base64 = image_base64.replace(/^data:image\/\w+;base64,/, '');
-  // Remove any whitespace
-  base64 = base64.replace(/\s/g, '');
-  
-  console.log('Base64 length:', base64.length);
-  
+  // Clean the base64 string (remove any data URL prefix and whitespace)
+  let base64 = image_base64.replace(/^data:image\/\w+;base64,/, '').replace(/\s/g, '');
   if (base64.length < 100) {
     return res.status(400).json({ error: 'Image too small or corrupted. Please retake the photo.' });
   }
@@ -24,19 +19,20 @@ export default async function handler(req, res) {
   const programName = program_name || 'GIBEON';
 
   try {
-    // Call OCR.space
+    // Call OCR.space using form-encoded body (matching Python implementation)
+    const params = new URLSearchParams();
+    params.append('base64Image', `data:image/jpeg;base64,${base64}`);
+    params.append('apikey', 'helloworld');
+    params.append('language', 'eng');
+    params.append('isOverlayRequired', 'false');
+    params.append('detectOrientation', 'true');
+    params.append('scale', 'true');
+    params.append('OCREngine', '2');
+
     const ocrRes = await fetch('https://api.ocr.space/parse/image', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        base64Image: `data:image/jpeg;base64,${base64}`,
-        apikey: 'helloworld',
-        language: 'eng',
-        isOverlayRequired: false,
-        detectOrientation: true,
-        scale: true,
-        OCREngine: 2,
-      }),
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
     });
 
     const ocrData = await ocrRes.json();
@@ -49,7 +45,7 @@ export default async function handler(req, res) {
 
     const rawText = ocrData.ParsedResults[0].ParsedText;
 
-    // Parse names (unchanged)
+    // Parse names from the OCR text
     const lines = rawText.split('\n').map(line => line.trim()).filter(Boolean);
     const extractedNames = lines.map(line => {
       const parts = line.split(/\s+/);
@@ -145,4 +141,4 @@ export default async function handler(req, res) {
     console.error('OCR.space scan error:', error);
     return res.status(500).json({ error: error.message || 'Internal server error' });
   }
-}
+  }

@@ -1,4 +1,4 @@
-import { IncomingForm } from 'formidable';   // ✅ correct for v3
+import { IncomingForm } from 'formidable';
 import { supabaseAdmin } from '../../../lib/supabaseClient';
 import { extractNamesFromImage } from '../../../utils/ocr';
 import { matchNamesToMembers } from '../../../lib/fuzzyMatch';
@@ -13,7 +13,7 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
 
   try {
-    const form = new IncomingForm();   // ✅
+    const form = new IncomingForm();
     form.parse(req, async (err, fields, files) => {
       if (err) {
         console.error('Form parse error:', err);
@@ -23,10 +23,10 @@ export default async function handler(req, res) {
       try {
         const churchId = fields.church_id?.[0] || 'demo-church';
         const programName = fields.program_name?.[0] || 'GIBEON';
-        const file = files.file?.[0];   // formidable v3 stores files in arrays
+        const file = files.file?.[0];   // formidable v3 returns arrays
         if (!file) return res.status(400).json({ error: 'No file uploaded' });
 
-        // Upload to Supabase Storage
+        // 1. Upload to Supabase Storage (this is fine, it only uses storage)
         const fileBuffer = fs.readFileSync(file.filepath);
         const fileExt = file.originalFilename.split('.').pop();
         const filePath = `${churchId}/${Date.now()}.${fileExt}`;
@@ -45,25 +45,28 @@ export default async function handler(req, res) {
           .getPublicUrl(filePath);
         const publicUrl = urlData.publicUrl;
 
-        // OCR
+        // 2. OCR – free, no database
         const extractedNames = await extractNamesFromImage(publicUrl);
 
-        // Database operations
+        // 3. ALL DATABASE OPERATIONS USE DIRECT POOL (NO supabaseAdmin.from)
         const client = await pool.connect();
+
+        // Fetch active members
         const membersRes = await client.query(
           `SELECT id, first_name, last_name FROM members WHERE church_id = $1 AND status = 'active'`,
           [churchId]
         );
         const membersList = membersRes.rows;
 
+        // Fuzzy match
         const { presentIds, unmatched } = matchNamesToMembers(extractedNames, membersList);
         let newMembersCount = 0;
 
+        // Add unmatched as new members
         for (const fullName of unmatched) {
           const parts = fullName.split(' ');
           const firstName = parts[0];
           const lastName = parts.slice(1).join(' ');
-
           const insertRes = await client.query(
             `INSERT INTO members (church_id, first_name, last_name, phone, status, type)
              VALUES ($1, $2, $3, '', 'active', 'visitor')
@@ -74,6 +77,7 @@ export default async function handler(req, res) {
           newMembersCount++;
         }
 
+        // Session handling
         const today = new Date().toISOString().slice(0, 10);
         let sessionRes = await client.query(
           `SELECT id FROM sessions WHERE church_id = $1 AND name = $2 AND created_at::date = $3`,
@@ -100,6 +104,7 @@ export default async function handler(req, res) {
         );
         const sectionId = sectionRes.rows[0].id;
 
+        // Mark present
         for (const memberId of presentIds) {
           await client.query(
             `INSERT INTO attendance_records (member_id, attendance_date, present, session_section_id)
@@ -109,6 +114,7 @@ export default async function handler(req, res) {
           );
         }
 
+        // Mark others absent
         const allActiveIds = membersList.map(m => m.id);
         for (const id of allActiveIds) {
           if (!presentIds.includes(id)) {
@@ -138,4 +144,4 @@ export default async function handler(req, res) {
     console.error('SCAN OUTER ERROR:', outerError);
     res.status(500).json({ error: outerError.message });
   }
-    }
+  }

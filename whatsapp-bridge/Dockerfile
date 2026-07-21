@@ -1,6 +1,7 @@
 FROM node:18-slim
 
 RUN apt-get update && apt-get install -y \
+    git \
     chromium \
     libatk-bridge2.0-0 \
     libxkbcommon-x11-0 \

@@ -1,115 +1,242 @@
-import Link from 'next/link';
-import { useRouter } from 'next/router';
+import { useEffect, useState } from 'react';
+import Layout from '../components/Layout';
 
-export default function Layout({ children }) {
-  const router = useRouter();
+export default function Dashboard() {
+  const [stats, setStats] = useState(null);
+  const churchId = 'demo-church';
+
+  useEffect(() => {
+    fetch(`/api/dashboard?church_id=${churchId}`)
+      .then(r => r.json())
+      .then(setStats);
+  }, []);
+
+  const sendBulkWhatsApp = async (sessionName, messageTemplate) => {
+    const res = await fetch('/api/send-whatsapp-bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ church_id: churchId, session_name: sessionName, message_template: messageTemplate }),
+    });
+    const data = await res.json();
+    alert(`Sent: ${data.sent || 0}, Failed: ${data.failed || 0}`);
+  };
+
+  if (!stats) {
+    return (
+      <Layout>
+        <div style={{ maxWidth: 900, margin: '0 auto', padding: '20px' }}>
+          <p style={{ color: 'rgba(255,255,255,0.6)' }}>Loading insights…</p>
+        </div>
+      </Layout>
+    );
+  }
+
+  const today = new Date().toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
+  // Build ARIA insight message dynamically
+  const insightParts = [];
+  if (stats.present_count > 0) {
+    insightParts.push(`${stats.present_count} people attended today.`);
+  }
+  if (stats.new_members && stats.new_members > 0) {
+    insightParts.push(`${stats.new_members} are first‑time visitors.`);
+  }
+  if (stats.absent_count > 0) {
+    insightParts.push(`${stats.absent_count} were absent.`);
+  }
+  if (stats.prayer_requests > 0) {
+    insightParts.push(`${stats.prayer_requests} requested prayer.`);
+  }
+  if (stats.needs_pastor > 0) {
+    insightParts.push(`${stats.needs_pastor} require pastoral attention.`);
+  }
+  if (stats.wrong_numbers > 0) {
+    insightParts.push(`${stats.wrong_numbers} have invalid phone numbers.`);
+  }
+  const ariaInsight = insightParts.length > 0
+    ? insightParts.join(' ')
+    : 'No attendance data yet. Scan or check back later.';
+
   return (
-    <>
-      {/* Background gradient – deep navy, slow animation */}
-      <div
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: '100%',
-          zIndex: 0,
-          background: 'linear-gradient(135deg, #0b0f19 0%, #1a1f2b 50%, #0b0f19 100%)',
-          backgroundSize: '400% 400%',
-          animation: 'bgShift 20s ease infinite',
-        }}
-      />
-      {/* Navigation */}
-      <nav
-        style={{
-          position: 'sticky',
-          top: 0,
-          zIndex: 999,
-          backdropFilter: 'blur(20px)',
-          background: 'rgba(11,15,25,0.6)',
-          borderBottom: '1px solid rgba(255,255,255,0.06)',
-          padding: '12px 24px',
-          display: 'flex',
-          justifyContent: 'center',
-          gap: 28,
-          flexWrap: 'wrap',
-        }}
-      >
-        <Link href="/" style={router.pathname === '/' ? activeLink : link}>
-          <span style={{ marginRight: 6 }}>📊</span> Dashboard
-        </Link>
-        <Link href="/scan" style={router.pathname === '/scan' ? activeLink : link}>
-          <span style={{ marginRight: 6 }}>📷</span> Scan
-        </Link>
-        <Link href="/members" style={router.pathname === '/members' ? activeLink : link}>
-          <span style={{ marginRight: 6 }}>👥</span> Members
-        </Link>
-        <Link href="/session" style={router.pathname === '/session' ? activeLink : link}>
-          <span style={{ marginRight: 6 }}>📋</span> Session
-        </Link>
-      </nav>
+    <Layout>
+      <div style={{ maxWidth: 1000, margin: '0 auto', padding: '20px' }}>
+        {/* Header */}
+        <h1 style={{ fontSize: 32, fontWeight: 700, marginBottom: 5, color: '#f0f0f0' }}>
+          Good morning, Pastor.
+        </h1>
+        <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.6)', marginBottom: 30 }}>
+          {today}
+        </p>
 
-      {/* Page content */}
-      <main style={{ position: 'relative', zIndex: 1, paddingBottom: 80, minHeight: '100vh' }}>
-        {children}
-      </main>
+        {/* ARIA Insights Panel */}
+        <div
+          style={{
+            background: 'rgba(79,70,229,0.12)',
+            backdropFilter: 'blur(12px)',
+            borderRadius: 20,
+            padding: 20,
+            marginBottom: 30,
+            border: '1px solid rgba(79,70,229,0.3)',
+            display: 'flex',
+            gap: 16,
+            alignItems: 'flex-start',
+          }}
+        >
+          <div style={{ fontSize: 28 }}>🤖</div>
+          <div>
+            <div
+              style={{
+                fontSize: 18,
+                fontWeight: 600,
+                marginBottom: 8,
+                color: '#a5b4fc',
+              }}
+            >
+              ARIA Insights
+            </div>
+            <p style={{ margin: 0, color: '#e0e0e0', lineHeight: 1.6, fontSize: 15 }}>
+              {ariaInsight}
+            </p>
+            {stats.absent_count > 0 && (
+              <p style={{ margin: '10px 0 0', color: '#f59e0b', fontStyle: 'italic' }}>
+                Consider following up with those who were absent.
+              </p>
+            )}
+          </div>
+        </div>
 
-      {/* Premium footer */}
-      <footer
-        style={{
-          position: 'fixed',
-          bottom: 0,
-          left: 0,
-          width: '100%',
-          backdropFilter: 'blur(20px)',
-          background: 'rgba(11,15,25,0.7)',
-          color: '#fff',
-          textAlign: 'center',
-          padding: '10px 0',
-          fontSize: 13,
-          zIndex: 1000,
-          borderTop: '1px solid rgba(255,255,255,0.06)',
-          letterSpacing: 0.5,
-        }}
-      >
-        <span style={{ opacity: 0.6 }}>FIDUCIA CARE </span>
-        <span style={{ fontWeight: 600 }}>· Intelligence by FIDUCIA</span>
-      </footer>
+        {/* Key Metrics Grid */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+            gap: 16,
+            marginBottom: 30,
+          }}
+        >
+          <MetricCard
+            icon="✅"
+            label="Present Today"
+            value={stats.present_count}
+            color="#34D399"
+          />
+          <MetricCard
+            icon="🔴"
+            label="Need Follow‑up"
+            value={stats.absent_count}
+            color="#F59E0B"
+            caption="Absent today"
+          />
+          <MetricCard
+            icon="🟡"
+            label="New Visitors"
+            value={stats.new_members || 0}
+            color="#60A5FA"
+          />
+          <MetricCard
+            icon="❤️"
+            label="Prayer Requests"
+            value={stats.prayer_requests}
+            color="#F472B6"
+          />
+          <MetricCard
+            icon="⚠️"
+            label="Invalid Numbers"
+            value={stats.wrong_numbers}
+            color="#9CA3AF"
+          />
+          <MetricCard
+            icon="🚨"
+            label="Urgent (Pastor)"
+            value={stats.needs_pastor}
+            color="#EF4444"
+          />
+        </div>
 
-      <style jsx global>{`
-        @keyframes bgShift {
-          0% { background-position: 0% 50%; }
-          50% { background-position: 100% 50%; }
-          100% { background-position: 0% 50%; }
-        }
-        body {
-          margin: 0;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-          color: #e0e0e0;
-        }
-        * {
-          box-sizing: border-box;
-        }
-        ::selection {
-          background: rgba(79, 70, 229, 0.4);
-        }
-      `}</style>
-    </>
+        {/* Quick Actions */}
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 14,
+            marginBottom: 20,
+          }}
+        >
+          <button
+            onClick={() =>
+              sendBulkWhatsApp(
+                'GIBEON',
+                '⛪ *Havilah Christian Church*\n\nDear {first_name}, thank you for worshipping with us at GIBEON 2026! We are grateful for your presence. Stay blessed! 🙏'
+              )
+            }
+            style={actionButtonStyle}
+          >
+            📩 Send GIBEON Thank‑You
+          </button>
+          <button
+            onClick={() =>
+              sendBulkWhatsApp(
+                'GIBEON',
+                '📖 *Bible Study Reminder*\n\nHello {first_name}, join us tomorrow (Tuesday) for our weekly Bible Study. Time: 6 PM. Come expectant!'
+              )
+            }
+            style={actionButtonStyle}
+          >
+            📖 Bible Study Reminder
+          </button>
+        </div>
+
+        {/* Optional: Latest activity or timeline preview could go here */}
+      </div>
+    </Layout>
   );
 }
 
-const link = {
-  textDecoration: 'none',
-  color: 'rgba(255,255,255,0.65)',
-  fontWeight: 500,
-  fontSize: 15,
-  transition: 'all 0.2s',
-};
+// Reusable metric card
+function MetricCard({ icon, label, value, color = '#E0E0E0', caption }) {
+  return (
+    <div
+      style={{
+        background: 'rgba(255,255,255,0.03)',
+        backdropFilter: 'blur(8px)',
+        borderRadius: 18,
+        padding: 20,
+        textAlign: 'center',
+        border: '1px solid rgba(255,255,255,0.06)',
+        transition: 'transform 0.2s, border-color 0.2s',
+        cursor: 'default',
+      }}
+      onMouseEnter={e => (e.currentTarget.style.transform = 'translateY(-3px)')}
+      onMouseLeave={e => (e.currentTarget.style.transform = 'none')}
+    >
+      <div style={{ fontSize: 28, marginBottom: 6 }}>{icon}</div>
+      <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)', marginBottom: 6 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 36, fontWeight: 700, color }}>{value}</div>
+      {caption && (
+        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginTop: 4 }}>
+          {caption}
+        </div>
+      )}
+    </div>
+  );
+}
 
-const activeLink = {
-  ...link,
+const actionButtonStyle = {
+  padding: '12px 24px',
+  background: 'rgba(79,70,229,0.8)',
+  backdropFilter: 'blur(5px)',
   color: '#fff',
+  borderRadius: 14,
   fontWeight: 600,
-  borderBottom: '2px solid #4F46E5',
-  paddingBottom: 4,
+  fontSize: 15,
+  border: '1px solid rgba(255,255,255,0.1)',
+  cursor: 'pointer',
+  transition: 'background 0.2s',
 };

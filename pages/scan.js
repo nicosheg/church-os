@@ -8,7 +8,9 @@ export default function ScanPage() {
   const fileInputRef = useRef(null);
   const [scanState, setScanStateLocal] = useState(getScanState());
   const [programName, setProgramName] = useState('GIBEON');
+  const [results, setResults] = useState(null); // holds { people, present_count, new_members }
 
+  // Restore scan state on mount
   useEffect(() => {
     const state = getScanState();
     setScanStateLocal(state);
@@ -19,17 +21,16 @@ export default function ScanPage() {
     setScanStateLocal(prev => ({ ...prev, ...newState }));
   };
 
+  // Resize and convert to base64
   const fileToBase64 = (file) => {
     return new Promise((resolve, reject) => {
       const img = new Image();
       const objectUrl = URL.createObjectURL(file);
       img.src = objectUrl;
       img.onload = () => {
-        // Release object URL immediately
         URL.revokeObjectURL(objectUrl);
-
-        const MAX_WIDTH = 600;       // smaller for memory‑constrained phones
-        const MAX_HEIGHT = 600;
+        const MAX_WIDTH = 800;
+        const MAX_HEIGHT = 800;
         let width = img.width;
         let height = img.height;
 
@@ -48,7 +49,6 @@ export default function ScanPage() {
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, width, height);
 
-        // Convert to blob with reduced quality
         canvas.toBlob(
           (blob) => {
             if (!blob) {
@@ -58,7 +58,6 @@ export default function ScanPage() {
             const reader = new FileReader();
             reader.onloadend = () => {
               const base64 = reader.result.split(',')[1];
-              // Clear canvas memory
               canvas.width = 0;
               canvas.height = 0;
               resolve(base64);
@@ -67,7 +66,7 @@ export default function ScanPage() {
             reader.readAsDataURL(blob);
           },
           'image/jpeg',
-          0.5           // lower quality = smaller base64
+          0.7
         );
       };
       img.onerror = () => {
@@ -80,15 +79,14 @@ export default function ScanPage() {
   const handleFile = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
-    // Release the file input reference to free memory
     e.target.value = null;
 
-    updateState({ status: 'processing', message: 'Optimizing image...' });
+    updateState({ status: 'processing', message: 'Preparing image...' });
+    setResults(null);
 
     try {
       const base64 = await fileToBase64(file);
-      updateState({ message: 'Scanning names...' });
+      updateState({ message: 'Scanning and analysing...' });
 
       const res = await fetch('/api/attendance/scan-base64', {
         method: 'POST',
@@ -103,78 +101,90 @@ export default function ScanPage() {
       const data = await res.json();
 
       if (data.status === 'ok') {
+        setResults(data);
         updateState({
           status: 'success',
-          message: `✅ Scan complete! ${data.present_count} present (${data.new_members} new members added).`,
+          message: `✅ Scan complete! ${data.present_count} present, ${data.new_members} new.`,
         });
-        setTimeout(() => {
-          clearScanState();
-          router.push('/');
-        }, 3000);
       } else {
         updateState({
           status: 'error',
-          message: '❌ Error: ' + (data.error || 'Unknown'),
+          message: '❌ ' + (data.error || 'Scan failed'),
         });
       }
     } catch (err) {
       updateState({
         status: 'error',
-        message: '❌ ' + (err.message || 'Something went wrong'),
+        message: '❌ Network error: ' + err.message,
       });
     }
   };
 
   const today = new Date().toLocaleDateString('en-US', {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
   });
 
   return (
     <Layout>
-      <div style={{ maxWidth: 500, margin: '40px auto', padding: '0 20px', textAlign: 'center' }}>
-        <h1 style={{ fontSize: 28, fontWeight: 700 }}>Scan Attendance</h1>
-        <p style={{ color: '#555', marginBottom: 25 }}>{today}</p>
+      <div style={{ maxWidth: 600, margin: '40px auto', padding: '0 20px', textAlign: 'center' }}>
+        <h1 style={{ fontSize: 28, fontWeight: 700, color: '#f0f0f0', marginBottom: 8 }}>
+          Scan Attendance
+        </h1>
+        <p style={{ color: 'rgba(255,255,255,0.6)', marginBottom: 25 }}>{today}</p>
 
+        {/* Program Name Input */}
+        <div style={{ marginBottom: 25 }}>
+          <label
+            style={{
+              fontWeight: 600,
+              display: 'block',
+              marginBottom: 8,
+              color: 'rgba(255,255,255,0.8)',
+            }}
+          >
+            Program / Event Name
+          </label>
+          <input
+            type="text"
+            value={programName}
+            onChange={(e) => setProgramName(e.target.value)}
+            placeholder="e.g., GIBEON"
+            style={{
+              padding: '12px 16px',
+              fontSize: 16,
+              borderRadius: 12,
+              border: '1px solid rgba(255,255,255,0.15)',
+              background: 'rgba(255,255,255,0.05)',
+              backdropFilter: 'blur(5px)',
+              color: '#fff',
+              width: '100%',
+              maxWidth: 300,
+              textAlign: 'center',
+              outline: 'none',
+            }}
+          />
+        </div>
+
+        {/* Camera Button */}
         {scanState.status === 'idle' && (
-          <>
-            <div style={{ marginBottom: 25 }}>
-              <label style={{ fontWeight: 600, display: 'block', marginBottom: 8 }}>Program / Event Name</label>
-              <input
-                type="text"
-                value={programName}
-                onChange={e => setProgramName(e.target.value)}
-                placeholder="e.g., GIBEON"
-                style={{
-                  padding: '12px 16px',
-                  fontSize: 16,
-                  borderRadius: 12,
-                  border: '1px solid #ddd',
-                  width: '100%',
-                  maxWidth: 280,
-                  textAlign: 'center',
-                  backdropFilter: 'blur(5px)',
-                  background: 'rgba(255,255,255,0.7)',
-                  outline: 'none',
-                }}
-              />
+          <label htmlFor="cameraInput" style={{ cursor: 'pointer', display: 'inline-block' }}>
+            <div
+              style={{
+                background: 'linear-gradient(135deg, #4F46E5, #7C3AED)',
+                color: '#fff',
+                padding: '18px 40px',
+                borderRadius: 16,
+                fontSize: 20,
+                fontWeight: 600,
+                boxShadow: '0 8px 24px rgba(79,70,229,0.3)',
+                transition: 'transform 0.2s',
+              }}
+            >
+              📷 Take Photo of Register
             </div>
-
-            <label htmlFor="cameraInput" style={{ cursor: 'pointer', display: 'inline-block' }}>
-              <div
-                style={{
-                  background: 'linear-gradient(135deg, #4F46E5, #7C3AED)',
-                  color: 'white',
-                  padding: '18px 40px',
-                  borderRadius: 16,
-                  fontSize: 20,
-                  fontWeight: 600,
-                  boxShadow: '0 8px 24px rgba(79,70,229,0.3)',
-                  transition: 'transform 0.2s',
-                }}
-              >
-                📷 Take Photo of Register
-              </div>
-            </label>
             <input
               ref={fileInputRef}
               id="cameraInput"
@@ -184,28 +194,113 @@ export default function ScanPage() {
               onChange={handleFile}
               style={{ display: 'none' }}
             />
-          </>
+          </label>
         )}
 
+        {/* Processing / Result overlay */}
         {scanState.status !== 'idle' && (
           <div
             style={{
               marginTop: 30,
-              padding: 12,
-              background: 'rgba(255,255,255,0.8)',
-              borderRadius: 12,
-              backdropFilter: 'blur(5px)',
+              padding: 16,
+              borderRadius: 16,
+              backdropFilter: 'blur(10px)',
+              background: 'rgba(255,255,255,0.05)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              color: '#f0f0f0',
+              textAlign: 'left',
             }}
           >
-            {scanState.status === 'processing' && (
-              <p style={{ fontSize: 18 }}>⏳ {scanState.message}</p>
+            {/* Status message */}
+            <p style={{ fontSize: 18, fontWeight: 600, marginBottom: 12 }}>
+              {scanState.status === 'processing' ? '⏳' : ''} {scanState.message}
+            </p>
+
+            {/* Show people list if successful */}
+            {scanState.status === 'success' && results?.people && (
+              <>
+                <div style={{ marginBottom: 12, color: '#34D399' }}>
+                  {results.people.length} people found:
+                </div>
+                <div style={{ maxHeight: 200, overflowY: 'auto', fontSize: 14 }}>
+                  {results.people.map((p, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        padding: '6px 0',
+                        borderBottom: '1px solid rgba(255,255,255,0.08)',
+                      }}
+                    >
+                      <span style={{ flex: 2 }}>{p.first_name}</span>
+                      <span
+                        style={{
+                          flex: 1,
+                          textAlign: 'center',
+                          fontWeight: 600,
+                          color:
+                            p.confidence >= 90
+                              ? '#34D399'
+                              : p.confidence >= 80
+                              ? '#F59E0B'
+                              : '#EF4444',
+                        }}
+                      >
+                        {p.confidence}%
+                      </span>
+                      <span style={{ flex: 1.5, textAlign: 'right', color: 'rgba(255,255,255,0.6)' }}>
+                        {p.phone || '—'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={() => {
+                    clearScanState();
+                    router.push('/members');
+                  }}
+                  style={{
+                    marginTop: 15,
+                    width: '100%',
+                    padding: '12px',
+                    background: '#34D399',
+                    color: '#000',
+                    border: 'none',
+                    borderRadius: 10,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  View Members →
+                </button>
+              </>
             )}
-            {(scanState.status === 'success' || scanState.status === 'error') && (
-              <p style={{ fontSize: 18 }}>{scanState.message}</p>
+
+            {/* Error state – option to retry */}
+            {scanState.status === 'error' && (
+              <button
+                onClick={() => {
+                  clearScanState();
+                  setResults(null);
+                }}
+                style={{
+                  marginTop: 10,
+                  padding: '10px 20px',
+                  background: '#EF4444',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 10,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Try Again
+              </button>
             )}
           </div>
         )}
       </div>
     </Layout>
   );
-            }
+    }

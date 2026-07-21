@@ -14,7 +14,7 @@ export default async function handler(req, res) {
   const programName = program_name || 'GIBEON';
 
   try {
-    // 1. OCR via OCR.space (form‑encoded)
+    // ---------- 1. OCR ----------
     console.log('Starting OCR...');
     const params = new URLSearchParams();
     params.append('base64Image', `data:image/jpeg;base64,${base64}`);
@@ -38,7 +38,7 @@ export default async function handler(req, res) {
     const rawText = ocrData.ParsedResults[0].ParsedText;
     console.log('OCR raw text:', rawText);
 
-    // 2. AI correction & structuring
+    // ---------- 2. AI Document Understanding ----------
     const aiRes = await fetch(`${req.headers.origin || 'http://localhost:3000'}/api/ai/correct-scan`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -46,36 +46,45 @@ export default async function handler(req, res) {
     });
     if (!aiRes.ok) {
       const err = await aiRes.json();
-      console.error('AI correction failed:', err);
       return res.status(500).json({ error: 'AI correction failed: ' + (err.error || 'unknown') });
     }
     const { people } = await aiRes.json();
     console.log('AI returned', people.length, 'people');
 
-    if (!people || people.length === 0) return res.status(400).json({ error: 'No people found.' });
-
-    // 3. Clean & filter
-    const validPeople = people
-      .filter(p => p.name && p.name.trim().length > 0)
-      .map(p => ({
-        first_name: p.name.trim(),
-        last_name: '',
-        phone: p.phone || '',
-        confidence: p.confidence || 70,
-      }));
-    console.log('Valid people after filtering:', validPeople.length);
-
-    if (validPeople.length === 0) {
-      console.log('No valid people after filtering');
-      return res.status(400).json({ error: 'No valid names after filtering.' });
+    if (!people || people.length === 0) {
+      return res.status(400).json({ error: 'No people found. Please ensure the register is clear.' });
     }
 
-    // 4. Split by confidence
-    const highConfidence = validPeople.filter(p => p.confidence >= 90);
-    const lowConfidence = validPeople.filter(p => p.confidence < 90);
-    console.log('High confidence:', highConfidence.length, 'Low confidence:', lowConfidence.length);
+    // ---------- 3. Phone validation & cleanup ----------
+    const validPeople = people
+      .filter(p => p.name && p.name.trim().length > 0)
+      .map(p => {
+        let phone = (p.phone || '').replace(/\s+/g, '');
+        // Validate Nigerian phone: must be 11-13 digits after country code
+        const digits = phone.replace(/\D/g, '');
+        if (digits.length < 10 || digits.length > 13) {
+          phone = ''; // invalid phone, don't use
+        }
+        return {
+          first_name: p.name.trim(),
+          last_name: '',
+          phone: phone,
+          confidence: p.confidence || 70,
+        };
+      });
+    console.log('Valid people after phone validation:', validPeople.length);
 
-    // 5. Save high‑confidence members + attendance
+    if (validPeople.length === 0) {
+      return res.status(400).json({ error: 'No valid names with phone numbers found.' });
+    }
+
+    // ---------- 4. Confidence split (80% threshold) ----------
+    const HIGH_THRESHOLD = 80;
+    const highConfidence = validPeople.filter(p => p.confidence >= HIGH_THRESHOLD);
+    const lowConfidence = validPeople.filter(p => p.confidence < HIGH_THRESHOLD);
+    console.log(`High confidence (>=${HIGH_THRESHOLD}): ${highConfidence.length}, Low: ${lowConfidence.length}`);
+
+    // ---------- 5. Save high-confidence members ----------
     const client = await pool.connect();
     let presentIds = [];
     let newMembersCount = 0;
@@ -88,59 +97,81 @@ export default async function handler(req, res) {
       const membersList = membersRes.rows;
       const { presentIds: matched, unmatched } = matchNamesToMembers(highConfidence, membersList);
       presentIds = matched;
-      console.log('Matched existing:', matched.length, 'Unmatched:', unmatched.length);
+      console.log('Matched by name:', matched.length, 'Unmatched:', unmatched.length);
 
-      // For each unmatched high‑confidence person, try to insert; if phone already exists, update the name instead
       for (const person of unmatched) {
         const fullName = person.first_name;
         if (!fullName) continue;
-        const phone = person.phone || '';
+        let phone = person.phone || '';
+        let memberId = null;
 
-        try {
-          // If a phone number is present and already exists, update that member's name and mark them present
-          if (phone) {
-            const existing = await client.query(
-              `SELECT id FROM members WHERE church_id = $1 AND phone = $2 AND status = 'active' LIMIT 1`,
-              [churchId, phone]
-            );
-            if (existing.rows.length > 0) {
-              // Update the name and add to presentIds
-              await client.query(
-                `UPDATE members SET first_name = $1, last_name = '' WHERE id = $2`,
-                [fullName, existing.rows[0].id]
-              );
-              presentIds.push(existing.rows[0].id);
-              continue; // skip insertion
-            }
+        // If phone exists, try to find an existing member with that phone first
+        if (phone) {
+          const existing = await client.query(
+            `SELECT id FROM members WHERE church_id = $1 AND phone = $2 LIMIT 1`,
+            [churchId, phone]
+          );
+          if (existing.rows.length > 0) {
+            memberId = existing.rows[0].id;
+            // Update the name to the corrected version
+            await client.query(`UPDATE members SET first_name = $1, last_name = '' WHERE id = $2`, [fullName, memberId]);
+            console.log(`Updated existing member ${fullName} (phone ${phone})`);
+            presentIds.push(memberId);
+            continue;
           }
+        }
 
-          // Insert new member
+        // Insert new member
+        try {
           const insertRes = await client.query(
             `INSERT INTO members (church_id, first_name, last_name, phone, status, type)
              VALUES ($1, $2, '', $3, 'active', 'visitor') RETURNING id`,
             [churchId, fullName, phone]
           );
-          presentIds.push(insertRes.rows[0].id);
+          memberId = insertRes.rows[0].id;
+          console.log(`Inserted ${fullName} (${phone}) with id ${memberId}`);
           newMembersCount++;
         } catch (insertErr) {
           console.error(`Insert error for ${fullName} (${phone}):`, insertErr.message);
-          // If insert fails (e.g., duplicate phone constraint), try to find existing by phone and use that
+          // If insert fails, try without phone (in case of constraint)
           if (phone) {
-            const existing = await client.query(
-              `SELECT id FROM members WHERE church_id = $1 AND phone = $2 LIMIT 1`,
-              [churchId, phone]
-            );
-            if (existing.rows.length > 0) {
-              presentIds.push(existing.rows[0].id);
+            try {
+              const insertNoPhone = await client.query(
+                `INSERT INTO members (church_id, first_name, last_name, phone, status, type)
+                 VALUES ($1, $2, '', '', 'active', 'visitor') RETURNING id`,
+                [churchId, fullName]
+              );
+              memberId = insertNoPhone.rows[0].id;
+              console.log(`Inserted ${fullName} without phone, id ${memberId}`);
+              newMembersCount++;
+            } catch (secondErr) {
+              console.error(`Second insert error for ${fullName}:`, secondErr.message);
+              // Last resort: find by phone again (maybe we missed)
+              if (phone) {
+                const recheck = await client.query(
+                  `SELECT id FROM members WHERE church_id = $1 AND phone = $2 LIMIT 1`,
+                  [churchId, phone]
+                );
+                if (recheck.rows.length > 0) {
+                  memberId = recheck.rows[0].id;
+                  console.log(`Finally found by phone ${phone}, using id ${memberId}`);
+                }
+              }
             }
           }
+        }
+
+        if (memberId) {
+          presentIds.push(memberId);
+        } else {
+          console.error(`Failed completely to add member: ${fullName}`);
         }
       }
     }
 
     console.log('Present IDs after insert:', presentIds.length);
 
-    // 6. Attendance recording
+    // ---------- 6. Record attendance ----------
     const today = new Date().toISOString().slice(0, 10);
     let sessionRes = await client.query(
       `SELECT id FROM sessions WHERE church_id = $1 AND name = $2 AND created_at::date = $3`,
@@ -171,6 +202,7 @@ export default async function handler(req, res) {
       );
     }
 
+    // Mark others absent
     const allActive = await client.query(
       `SELECT id FROM members WHERE church_id = $1 AND status = 'active'`,
       [churchId]
@@ -188,7 +220,7 @@ export default async function handler(req, res) {
 
     client.release();
 
-    // 7. Save low‑confidence entries to pending_reviews
+    // ---------- 7. Store low-confidence entries for review ----------
     const validLow = lowConfidence.filter(p => p.first_name?.trim());
     if (validLow.length > 0) {
       const flatValues = [];
@@ -214,7 +246,7 @@ export default async function handler(req, res) {
     console.log('Scan result:', result);
     return res.status(200).json(result);
   } catch (error) {
-    console.error('AI‑corrected scan error:', error);
+    console.error('Scan pipeline error:', error);
     return res.status(500).json({ error: error.message || 'Internal server error' });
   }
-      }
+}

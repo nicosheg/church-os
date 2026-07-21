@@ -1,6 +1,5 @@
 import pool from '../../lib/db';
-
-const BRIDGE_URL = process.env.WHATSAPP_BRIDGE_URL || 'http://whatsapp-bridge:3001';
+import { sendWhatsAppMessage } from '../../lib/messagingProviders';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
@@ -9,7 +8,7 @@ export default async function handler(req, res) {
   const today = new Date().toISOString().slice(0, 10);
 
   try {
-    // 1. Fetch present members with phone numbers
+    // Fetch present members with phone numbers
     let query = `
       SELECT DISTINCT m.id, m.first_name, m.phone
       FROM members m
@@ -41,21 +40,11 @@ export default async function handler(req, res) {
       let msg = (message_template || defaultTemplate)
         .replace('{first_name}', member.first_name)
         .replace('{session}', session_name || 'our program');
-      msg += footer;   // <-- FIDUCIA branding on every message
+      msg += footer;
 
       try {
-        const bridgeRes = await fetch(`${BRIDGE_URL}/send-message`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone: member.phone, message: msg }),
-        });
-
-        const bridgeData = await bridgeRes.json();
-        if (bridgeData.success) {
-          results.push({ phone: member.phone, status: 'sent' });
-        } else {
-          results.push({ phone: member.phone, error: bridgeData.error, status: 'failed' });
-        }
+        await sendWhatsAppMessage(member.phone, msg);
+        results.push({ phone: member.phone, status: 'sent' });
       } catch (err) {
         results.push({ phone: member.phone, error: err.message, status: 'failed' });
       }
@@ -69,4 +58,4 @@ export default async function handler(req, res) {
     console.error('Bulk WhatsApp error:', error);
     return res.status(500).json({ error: error.message });
   }
-      }
+}

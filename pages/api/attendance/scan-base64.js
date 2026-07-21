@@ -82,7 +82,7 @@ export default async function handler(req, res) {
 
     if (highConfidence.length > 0) {
       const membersRes = await client.query(
-        `SELECT id, first_name, last_name FROM members WHERE church_id = $1 AND status = 'active'`,
+        `SELECT id, first_name, last_name, phone FROM members WHERE church_id = $1 AND status = 'active'`,
         [churchId]
       );
       const membersList = membersRes.rows;
@@ -90,11 +90,31 @@ export default async function handler(req, res) {
       presentIds = matched;
       console.log('Matched existing:', matched.length, 'Unmatched:', unmatched.length);
 
+      // For each unmatched high‑confidence person, try to insert; if phone already exists, update the name instead
       for (const person of unmatched) {
         const fullName = person.first_name;
-        if (!fullName) continue; // safety
+        if (!fullName) continue;
         const phone = person.phone || '';
+
         try {
+          // If a phone number is present and already exists, update that member's name and mark them present
+          if (phone) {
+            const existing = await client.query(
+              `SELECT id FROM members WHERE church_id = $1 AND phone = $2 AND status = 'active' LIMIT 1`,
+              [churchId, phone]
+            );
+            if (existing.rows.length > 0) {
+              // Update the name and add to presentIds
+              await client.query(
+                `UPDATE members SET first_name = $1, last_name = '' WHERE id = $2`,
+                [fullName, existing.rows[0].id]
+              );
+              presentIds.push(existing.rows[0].id);
+              continue; // skip insertion
+            }
+          }
+
+          // Insert new member
           const insertRes = await client.query(
             `INSERT INTO members (church_id, first_name, last_name, phone, status, type)
              VALUES ($1, $2, '', $3, 'active', 'visitor') RETURNING id`,
@@ -103,7 +123,17 @@ export default async function handler(req, res) {
           presentIds.push(insertRes.rows[0].id);
           newMembersCount++;
         } catch (insertErr) {
-          console.error('Insert error for', fullName, insertErr.message);
+          console.error(`Insert error for ${fullName} (${phone}):`, insertErr.message);
+          // If insert fails (e.g., duplicate phone constraint), try to find existing by phone and use that
+          if (phone) {
+            const existing = await client.query(
+              `SELECT id FROM members WHERE church_id = $1 AND phone = $2 LIMIT 1`,
+              [churchId, phone]
+            );
+            if (existing.rows.length > 0) {
+              presentIds.push(existing.rows[0].id);
+            }
+          }
         }
       }
     }
@@ -127,7 +157,6 @@ export default async function handler(req, res) {
     } else {
       sessionId = sessionRes.rows[0].id;
     }
-
     const sectionRes = await client.query(
       `SELECT id FROM session_sections WHERE session_id = $1 AND name = 'All'`,
       [sessionId]

@@ -1,8 +1,8 @@
-// Groq LLM integration with local fallback – document understanding mode
+// FIDUCIA CARE – AI Document Understanding (Groq + powerful local fallback)
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
-// ── Groq caller ──
+// ── Robust Groq caller ──
 async function callGroq(rawText) {
   const systemPrompt = `You are an AI document understanding assistant for FIDUCIA CARE, a church management platform in Nigeria.
 Your input is the raw, messy OCR text from an attendance register. The register has two columns: Names and Phone Numbers.
@@ -51,13 +51,22 @@ Format:
   const content = data?.choices?.[0]?.message?.content?.trim();
   if (!content) throw new Error('Groq returned empty response');
 
-  const clean = content.replace(/```json|```/g, '').trim();
+  // Remove markdown fences and any surrounding non-JSON text
+  let clean = content.replace(/```json|```/g, '').trim();
+  // Try to extract the JSON array if there is extra text before/after
+  const arrayMatch = clean.match(/\[[\s\S]*\]/);
+  if (arrayMatch) {
+    clean = arrayMatch[0];
+  } else {
+    throw new Error('No JSON array found in Groq response');
+  }
+
   const parsed = JSON.parse(clean);
   if (!Array.isArray(parsed)) throw new Error('Response is not an array');
   return parsed;
 }
 
-// ── Local fallback ──
+// ── Powerful local fallback (tuned for Nigerian registers) ──
 function localFallback(rawText) {
   const lines = rawText.split('\n').map(line => line.trim()).filter(Boolean);
   const people = [];
@@ -71,15 +80,22 @@ function localFallback(rawText) {
   const isHeader = (str) =>
     /^(name|phone|telephone|attendance|date|program|service|total)$/i.test(str);
 
+  // Nigerian title prefixes
+  const titlePrefixes = /^(sis|bro|past|mrs|mr|evang|deacon|deac|prophet|apostle|rev|dr|prof|chief|engr|barr|hon)/i;
+
   for (let line of lines) {
-    line = line.replace(/[\\\/]/g, ' ').replace(/\s+/g, ' ').trim();
+    // Replace slashes, pipes, commas that break words
+    line = line.replace(/[\\\/\|,]/g, ' ').replace(/\s+/g, ' ').trim();
+
     if (isHeader(line)) continue;
 
+    // If line is almost all digits, treat as phone
     if (isPhoneLike(line) && !/[a-zA-Z]{2,}/.test(line)) {
       pendingPhone = line.replace(/\s/g, '');
       continue;
     }
 
+    // Try to separate a trailing phone number
     const phoneMatch = line.match(/(.*?)([0-9+\-\s]{8,})$/);
     let namePart = line;
     let phonePart = null;
@@ -89,6 +105,7 @@ function localFallback(rawText) {
       phonePart = phoneMatch[2].replace(/\s/g, '');
     }
 
+    // Must contain at least one letter and length >= 2
     if (namePart.length >= 2 && /[a-zA-Z]/.test(namePart)) {
       const phone = phonePart || pendingPhone || '';
       let normalizedPhone = '';
@@ -96,25 +113,61 @@ function localFallback(rawText) {
         normalizedPhone = phone.replace(/[\s\-\/\\|]/g, '');
         if (normalizedPhone.startsWith('0')) normalizedPhone = '+234' + normalizedPhone.substring(1);
         if (normalizedPhone.startsWith('234') && !normalizedPhone.startsWith('+')) normalizedPhone = '+' + normalizedPhone;
+        // Nigerian numbers should be 10-13 digits; otherwise discard
+        const digits = normalizedPhone.replace(/\D/g, '');
+        if (digits.length < 10 || digits.length > 13) normalizedPhone = '';
       }
+
+      let confidence = 80;
+      // Higher confidence if name is longer or starts with a known title
+      if (namePart.length > 10) confidence = 90;
+      if (titlePrefixes.test(namePart.split(' ')[0])) confidence += 5;
+      if (normalizedPhone && normalizedPhone.length >= 11) confidence += 5;
+      confidence = Math.min(confidence, 100);
+
       people.push({
         name: namePart,
         phone: normalizedPhone,
-        confidence: namePart.length > 5 ? 85 : 80,
+        confidence,
       });
       pendingPhone = null;
     }
   }
 
+  // Attach any leftover phone to the last person
   if (pendingPhone && people.length > 0) {
     people[people.length - 1].phone = pendingPhone;
     people[people.length - 1].confidence = Math.min(people[people.length - 1].confidence + 5, 100);
   }
 
+  // Merge obvious split names (e.g., "Sis" on one line, "Sandra Isichei" on next)
+  const merged = [];
+  let carry = null;
+  for (const p of people) {
+    if (carry) {
+      // If current has no title and the carried word looks like a title, concatenate
+      if (!titlePrefixes.test(p.name.split(' ')[0]) && titlePrefixes.test(carry)) {
+        merged.push({ ...p, name: carry + ' ' + p.name, confidence: Math.max(p.confidence, 85) });
+        carry = null;
+        continue;
+      } else {
+        merged.push(carry);
+        carry = null;
+      }
+    }
+    // If a single word is a known title, carry it to next
+    if (titlePrefixes.test(p.name) && p.name.split(' ').length === 1) {
+      carry = p.name;
+    } else {
+      merged.push(p);
+    }
+  }
+  if (carry) merged.push({ name: carry, phone: '', confidence: 70 });
+
   // Remove duplicates
   const unique = [];
   const seen = new Set();
-  for (const p of people) {
+  for (const p of merged) {
     const key = `${p.name}|${p.phone}`;
     if (!seen.has(key)) {
       unique.push(p);
@@ -139,28 +192,29 @@ export default async function handler(req, res) {
         people = await callGroq(rawText);
         usedGroq = true;
       } catch (groqErr) {
-        console.error('Groq failed, falling back to local:', groqErr.message);
+        console.error('Groq failed, using powerful local parser:', groqErr.message);
         people = localFallback(rawText);
       }
     } else {
       people = localFallback(rawText);
     }
 
-    // Clean bare +234 and short phone numbers
+    // Final cleaning: remove entries without name, fix bare +234, short phones
     const cleanedPeople = people
       .filter(p => p.name && p.name.trim().length > 0)
       .map(p => {
-        let phone = p.phone || '';
-        if (phone === '+234' || phone.replace(/\D/g, '').length < 10) phone = '';
+        let phone = (p.phone || '').replace(/\s+/g, '');
+        const digits = phone.replace(/\D/g, '');
+        if (phone === '+234' || digits.length < 10 || digits.length > 13) phone = '';
         return { ...p, phone };
       });
 
     console.log('Raw OCR text:', rawText);
-    console.log('Corrected people (used Groq:', usedGroq, '):', cleanedPeople);
+    console.log('Corrected people (Groq:', usedGroq, '):', cleanedPeople);
 
     return res.status(200).json({ people: cleanedPeople });
   } catch (error) {
     console.error('AI correction error:', error);
     return res.status(500).json({ error: error.message || 'Internal error in AI correction' });
   }
-                              }
+}

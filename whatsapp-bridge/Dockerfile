@@ -2,6 +2,7 @@ FROM node:18-slim
 
 RUN apt-get update && apt-get install -y \
     git \
+    openssh-client \
     chromium \
     libatk-bridge2.0-0 \
     libxkbcommon-x11-0 \
@@ -14,6 +15,10 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 WORKDIR /app
+
+# Force npm to use HTTPS for Git (avoids the SSH error)
+RUN npm config set git-protocol https
+
 COPY package.json .
 RUN npm install
 COPY . .

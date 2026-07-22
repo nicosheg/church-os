@@ -6,8 +6,8 @@ export default async function handler(req, res) {
   const { phone, first_name } = req.body;
   if (!phone) return res.status(400).json({ error: 'Phone number required' });
 
-  // Sanitised message – no invisible characters
-  const message = `\u2B50 *Havilah Christian Church*\n\nHello ${first_name || 'Beloved'}, this is a test message from FIDUCIA CARE.\n\n\u2728 Intelligence by FIDUCIA`;
+  // Plain ASCII message – no emojis, no special characters
+  const message = `Havilah Christian Church\n\nHello ${first_name || 'Beloved'}, this is a test message from FIDUCIA CARE.\n\nIntelligence by FIDUCIA`;
 
   try {
     await sendWhatsAppMessage(phone, message);
@@ -15,4 +15,4 @@ export default async function handler(req, res) {
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
-    }
+}

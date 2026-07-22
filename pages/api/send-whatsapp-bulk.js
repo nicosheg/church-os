@@ -51,7 +51,7 @@ export default async function handler(req, res) {
               to: cleanPhone,
               type: 'template',
               template: {
-                name: 'gibbon_thank_you',   // must match your approved template name
+                name: 'gebion_thank_you',   // must match your approved template name
                 language: { code: 'en_US' },
                 components: [
                   {
